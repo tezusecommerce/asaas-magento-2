@@ -12,9 +12,9 @@ namespace Asaas\Magento2\Model\Payment;
 use Exception;
 use Magento\Sales\Model\Order;
 
-class Boleto extends \Magento\Payment\Model\Method\AbstractMethod {
+class Pix extends \Magento\Payment\Model\Method\AbstractMethod {
 
-  protected $_code = "boleto";
+  protected $_code = "pix";
   protected $_isOffline = true;
   protected $_isInitializeNeeded = false;
 
@@ -74,7 +74,7 @@ class Boleto extends \Magento\Payment\Model\Method\AbstractMethod {
       $date = new \DateTime("+$days days");
       $notification = $this->helperData->getNotifications();
 
-      //pegando dados do pedido do clioente
+      //pegando dados do pedido do cliente
       $order = $payment->getOrder();
       $shippingaddress = $order->getBillingAddress();
 
@@ -83,18 +83,17 @@ class Boleto extends \Magento\Payment\Model\Method\AbstractMethod {
       }
 
       //Verifica a existência do usuário na Asaas obs: colocar cpf aqui
-      $user = (array)$this->userExists($paymentInfo['boleto_owner_cpf']);
+      $user = (array)$this->userExists($paymentInfo['pix_cpf']);
       if (!$user) {
         throw new \Exception("Por favor, verifique suas Credenciais (Ambiente, ApiKey)", 1);
       }
-
       if (count($user['data']) >= 1) {
         $currentUser = $user['data'][0]->id;
       } else {
         //Pega os dados do usuário necessários para a criação da conta na Asaas
         $dataUser['name'] = $shippingaddress->getFirstName() . ' ' . $shippingaddress->getLastName();
         $dataUser['email'] = $shippingaddress->getEmail();
-        $dataUser['cpfCnpj'] = $paymentInfo['boleto_owner_cpf'];
+        $dataUser['cpfCnpj'] = $paymentInfo['pix_cpf'];
         $dataUser['postalCode'] = $shippingaddress->getPostcode();
 
         //Habilita notificações entre o Asaas e o comprador
@@ -116,9 +115,9 @@ class Boleto extends \Magento\Payment\Model\Method\AbstractMethod {
         $currentUser = $newUser['id'];
       }
 
-      //Monta os dados para uma cobrança simples com boleto
+      //Monta os dados para uma cobrança com pix
       $request['customer'] = $currentUser;
-      $request['billingType'] = "BOLETO";
+      $request['billingType'] = "PIX";
       $request['value'] = $amount;
       $request['externalReference'] = $order->getIncrementId();
       $request['dueDate'] = $date->format('Y-m-d');
@@ -134,21 +133,34 @@ class Boleto extends \Magento\Payment\Model\Method\AbstractMethod {
       $request['interest']['value'] = $this->helperData->getInterest();
 
       //Informações de juros
-      $request['fine']['value'] = $this->helperData->getFine();
-
+      $request['fine']['value'] = $this->helperData->getFine();      
+      
       $paymentDone = (array)$this->doPayment($request);
       if (isset($paymentDone['errors'])) {
         throw new \Exception($paymentDone['errors'][0]->description, 1);
       }
-      $linkBoleto = $paymentDone['bankSlipUrl'];
-      $this->checkoutSession->setBoleto($linkBoleto);
+
+     $qrCode = (array)$this->getQrCode($paymentDone['id']);
+
+     if (!isset($qrCode['encodedImage']) || !isset($qrCode['payload'])) {
+      throw new \Exception($paymentDone['errors'][0]->description, 1);
+    }
+
+     $this->checkoutSession->setPixQrCode($qrCode['encodedImage']);
+     $this->checkoutSession->setPixPayload($qrCode['payload']);
+
+    $order->setData('pix_asaas_qrcode', $qrCode['encodedImage']);
+    $order->setData('pix_asaas_payload', $qrCode['payload']);
+    $order->save();
+
     } catch (\Exception $e) {
       throw new \Magento\Framework\Exception\LocalizedException(__($e->getMessage()));
     }
   }
+
   public function assignData(\Magento\Framework\DataObject $data) {
     $info = $this->getInfoInstance();
-    $info->setAdditionalInformation('boleto_owner_cpf', $data['additional_data']['boleto_owner_cpf'] ?? null);
+    $info->setAdditionalInformation('pix_cpf', $data['additional_data']['pix_cpf'] ?? null);
     return $this;
   }
 
@@ -216,6 +228,32 @@ class Boleto extends \Magento\Payment\Model\Method\AbstractMethod {
       CURLOPT_CUSTOMREQUEST => "POST",
       CURLOPT_USERAGENT => "magento",
       CURLOPT_POSTFIELDS => json_encode($data),
+      CURLOPT_HTTPHEADER => array(
+        "access_token: " . $this->_decrypt->decrypt($this->helperData->getAcessToken()),
+        "Content-Type: application/json"
+      ),
+    ));
+
+    $response = curl_exec($curl);
+
+    curl_close($curl);
+
+    return json_decode($response);
+  }
+
+  public function getQrCode($paymentId) {
+    $curl = curl_init();
+
+    curl_setopt_array($curl, array(
+      CURLOPT_URL => $this->helperData->getUrl() . "/api/v3/payments/{$paymentId}/pixQrCode",
+      CURLOPT_RETURNTRANSFER => true,
+      CURLOPT_ENCODING => "",
+      CURLOPT_MAXREDIRS => 10,
+      CURLOPT_TIMEOUT => 0,
+      CURLOPT_FOLLOWLOCATION => true,
+      CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+      CURLOPT_CUSTOMREQUEST => "GET",
+      CURLOPT_USERAGENT => "magento",
       CURLOPT_HTTPHEADER => array(
         "access_token: " . $this->_decrypt->decrypt($this->helperData->getAcessToken()),
         "Content-Type: application/json"

@@ -16,7 +16,7 @@ $_colspan = $block->isAddAfter() ? 2 : 1;
     <table class="admin__control-table" id="<?= $block->escapeHtmlAttr($block->getElement()->getId()) ?>">
       <thead>
         <tr>
-          <th>Parcelas</th>
+          <th><?= $block->escapeHtml(__('Installments')) ?></th>
           <?php foreach ($block->getColumns() as $columnName => $column) : ?>
             <th><?= $block->escapeHtml($column['label']) ?></th>
           <?php endforeach; ?>
