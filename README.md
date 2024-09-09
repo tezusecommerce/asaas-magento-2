@@ -126,4 +126,4 @@ Nota: Para que as configurações a seguir funcionem, todos os passos anteriores
 - Mensagem para o usuário
 	- Mensagem exibida na tela de agradecimento após a conclusão do pedido.
 
-![FOTO 7](.github/img/07.png)
+![FOTO 7](.github/img/pix.png)
